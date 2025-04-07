@@ -1,0 +1,1 @@
+# GlobalFocus-Sistema
