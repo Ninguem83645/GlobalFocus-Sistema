@@ -2,7 +2,7 @@
 const USERNAME = "admin";
 const PASSWORD = "senha123";
 const GIST_FILENAME = "user-data.json";
-const GITHUB_TOKEN = "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"; // Seu token integrado
+const GITHUB_TOKEN = "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";
 
 // Elementos DOM
 const loginContainer = document.getElementById('login-container');
@@ -14,16 +14,13 @@ const saveBtn = document.getElementById('save-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const statusMessage = document.getElementById('status-message');
 
-// Estado da aplicação
-let gistId = localStorage.getItem('gistId') || '';
-
 // Event Listeners
 loginForm.addEventListener('submit', handleLogin);
 saveBtn.addEventListener('click', saveData);
 logoutBtn.addEventListener('click', logout);
 
 // Verificar se já está logado ao carregar a página
-window.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', () => {
     if (localStorage.getItem('loggedIn') === 'true') {
         showApp();
         loadData();
@@ -31,20 +28,19 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // Funções
-async function handleLogin(e) {
+function handleLogin(e) {
     e.preventDefault();
     
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
     
-    if (username !== USERNAME || password !== PASSWORD) {
+    if (username === USERNAME && password === PASSWORD) {
+        localStorage.setItem('loggedIn', 'true');
+        showApp();
+        loadData();
+    } else {
         showStatus('Usuário ou senha incorretos', 'error');
-        return;
     }
-    
-    localStorage.setItem('loggedIn', 'true');
-    showApp();
-    loadData();
 }
 
 function showApp() {
@@ -55,9 +51,15 @@ function showApp() {
 
 async function loadData() {
     try {
-        // Tenta carregar do GitHub primeiro
-        if (gistId) {
-            const response = await fetch(`https://api.github.com/gists/${gistId}`, {
+        // Tenta carregar do localStorage primeiro
+        const localData = localStorage.getItem('localData');
+        if (localData) {
+            dataInput.value = localData;
+        }
+
+        // Depois tenta sincronizar com GitHub
+        if (localStorage.getItem('gistId')) {
+            const response = await fetch(`https://api.github.com/gists/${localStorage.getItem('gistId')}`, {
                 headers: {
                     'Authorization': `token ${GITHUB_TOKEN}`,
                     'Accept': 'application/vnd.github.v3+json'
@@ -66,18 +68,17 @@ async function loadData() {
             
             if (response.ok) {
                 const gist = await response.json();
-                const content = gist.files[GIST_FILENAME].content;
-                dataInput.value = content;
-                localStorage.setItem('localData', content);
-                return;
+                const remoteData = gist.files[GIST_FILENAME].content;
+                
+                // Atualiza apenas se os dados remotos forem diferentes
+                if (remoteData !== localData) {
+                    dataInput.value = remoteData;
+                    localStorage.setItem('localData', remoteData);
+                }
             }
         }
-        
-        // Fallback para dados locais
-        dataInput.value = localStorage.getItem('localData') || '';
     } catch (error) {
         console.error('Erro ao carregar dados:', error);
-        dataInput.value = localStorage.getItem('localData') || '';
         showStatus('Falha ao carregar dados do GitHub. Usando dados locais.', 'error');
     }
 }
@@ -85,14 +86,16 @@ async function loadData() {
 async function saveData() {
     const content = dataInput.value;
     
-    // Salva localmente em qualquer caso
+    // Salva localmente primeiro
     localStorage.setItem('localData', content);
+    showStatus('Dados salvos localmente', 'success');
     
+    // Tenta salvar no GitHub
     try {
         let response;
+        const gistId = localStorage.getItem('gistId');
         
         if (gistId) {
-            // Atualiza Gist existente
             response = await fetch(`https://api.github.com/gists/${gistId}`, {
                 method: 'PATCH',
                 headers: {
@@ -109,7 +112,6 @@ async function saveData() {
                 })
             });
         } else {
-            // Cria novo Gist
             response = await fetch('https://api.github.com/gists', {
                 method: 'POST',
                 headers: {
@@ -128,19 +130,14 @@ async function saveData() {
                 })
             });
             
-            if (response.ok) {
-                const gist = await response.json();
-                gistId = gist.id;
-                localStorage.setItem('gistId', gistId);
-            }
+            const gist = await response.json();
+            localStorage.setItem('gistId', gist.id);
         }
         
-        if (!response.ok) throw new Error('Falha ao salvar dados');
-        
-        showStatus('Dados salvos com sucesso e sincronizados com GitHub!', 'success');
+        showStatus('Dados sincronizados com GitHub!', 'success');
     } catch (error) {
-        console.error('Erro ao salvar dados:', error);
-        showStatus('Falha ao sincronizar com GitHub. Dados salvos localmente.', 'error');
+        console.error('Erro ao salvar no GitHub:', error);
+        showStatus('Falha ao sincronizar com GitHub', 'error');
     }
 }
 
